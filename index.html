@@ -65,6 +65,9 @@
         </label>
         <input type="file" id="fileInput" accept=".csv,.tsv,.xls,.xlsx">
       </div>
+      <div id="autoLoadMessage" class="mt-4">
+        <i class="fas fa-spinner fa-spin"></i> Intentando cargar automáticamente 1.csv...
+      </div>
     </div>
 
     <!-- Contenido -->
@@ -89,6 +92,11 @@
         <div class="col-md-3">
           <label class="form-label fw-bold">Rate</label>
           <select id="filterRate" class="form-select"><option value="all">Todos</option></select>
+        </div>
+        <div class="col-12 text-end">
+          <button id="btnLimpiarFiltros" class="btn btn-outline-secondary btn-sm">
+            <i class="fas fa-eraser me-2"></i>Limpiar filtros
+          </button>
         </div>
       </div>
 
@@ -519,32 +527,66 @@
         });
       }
 
-      // Inicialización
+      // Función para inicializar el dashboard tras cargar datos
+      function inicializarDashboard(jsonData) {
+        datosOriginales = normalizarDatos(jsonData);
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('dashboardContent').style.display = 'block';
+        actualizarFiltros();
+        datosFiltrados = [...datosOriginales];
+        actualizarKPIs();
+        actualizarGraficos();
+        actualizarTabla();
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        tooltipTriggerList.map(function (tooltipTriggerEl) { return new bootstrap.Tooltip(tooltipTriggerEl); });
+        document.getElementById('filterComuna').addEventListener('change', filtrarDatos);
+        document.getElementById('filterSector').addEventListener('change', filtrarDatos);
+        document.getElementById('filterEtapa').addEventListener('change', filtrarDatos);
+        document.getElementById('filterRate').addEventListener('change', filtrarDatos);
+        document.getElementById('btnLimpiarFiltros').addEventListener('click', function() {
+          document.getElementById('filterComuna').value = 'all';
+          document.getElementById('filterSector').value = 'all';
+          document.getElementById('filterEtapa').value = 'all';
+          document.getElementById('filterRate').value = 'all';
+          filtrarDatos();
+        });
+      }
+
+      // Auto carga de 1.csv
+      async function autoCargarCSV() {
+        try {
+          const response = await fetch('1.csv');
+          if (!response.ok) {
+            throw new Error('No se pudo cargar 1.csv automáticamente');
+          }
+          const arrayBuffer = await response.arrayBuffer();
+          const jsonData = procesarArchivo(arrayBuffer);
+          inicializarDashboard(jsonData);
+          document.getElementById('autoLoadMessage').style.display = 'none';
+        } catch (error) {
+          console.warn('Carga automática falló:', error);
+          // Dejar el área de subida manual visible
+          document.getElementById('autoLoadMessage').innerHTML = 
+            '<span class="text-danger"><i class="fas fa-exclamation-triangle"></i> No se pudo cargar 1.csv. Usa el botón para subir el archivo manualmente.</span>';
+        }
+      }
+
+      // Manejo de subida manual
       document.getElementById('fileInput').addEventListener('change', async function(e) {
         const file = e.target.files[0];
         if (!file) return;
         try {
           const arrayBuffer = await file.arrayBuffer();
           const jsonData = procesarArchivo(arrayBuffer);
-          datosOriginales = normalizarDatos(jsonData);
-          document.getElementById('loading').style.display = 'none';
-          document.getElementById('dashboardContent').style.display = 'block';
-          actualizarFiltros();
-          datosFiltrados = [...datosOriginales];
-          actualizarKPIs();
-          actualizarGraficos();
-          actualizarTabla();
-          var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-          tooltipTriggerList.map(function (tooltipTriggerEl) { return new bootstrap.Tooltip(tooltipTriggerEl); });
-          document.getElementById('filterComuna').addEventListener('change', filtrarDatos);
-          document.getElementById('filterSector').addEventListener('change', filtrarDatos);
-          document.getElementById('filterEtapa').addEventListener('change', filtrarDatos);
-          document.getElementById('filterRate').addEventListener('change', filtrarDatos);
+          inicializarDashboard(jsonData);
         } catch (error) {
           console.error(error);
           alert('Error al procesar el archivo.');
         }
       });
+
+      // Iniciar auto carga al cargar la página
+      autoCargarCSV();
     })();
   </script>
 </body>

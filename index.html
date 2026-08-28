@@ -66,7 +66,7 @@
         <input type="file" id="fileInput" accept=".csv,.tsv,.xls,.xlsx">
       </div>
       <div id="autoLoadMessage" class="mt-4">
-        <i class="fas fa-spinner fa-spin"></i> Intentando cargar automáticamente 1.csv...
+        <i class="fas fa-spinner fa-spin"></i> Intentando cargar automáticamente desde Google Sheets...
       </div>
     </div>
 
@@ -226,6 +226,11 @@
       let datosFiltrados = [];
       let charts = {};
 
+      // ================= CONFIGURACIÓN =================
+      // URL de exportación CSV de la hoja de cálculo de Google Sheets
+      const GOOGLE_SHEETS_CSV_URL = 'https://docs.google.com/spreadsheets/d/12KG8l2nesaXedN0uqqCLu9YuQesgXN4_2lH2VBpu92M/export?format=csv';
+      // ==================================================
+
       // Paleta de colores para el donut
       const paletaColores = ['#FF6384','#36A2EB','#FFCE56','#4BC0C0','#9966FF','#FF9F40','#C9CBCF','#8A2BE2','#00FA9A','#FF4500','#1E90FF','#DC143C','#FFD700','#ADFF2F','#FF69B4'];
 
@@ -243,7 +248,7 @@
         });
       }
 
-      // Mapa de iconos Font Awesome por sector (actualizado)
+      // Mapa de iconos Font Awesome por sector
       const iconosSector = {
         'TRANSPORTE': 'fa-car',
         'DEPORTES': 'fa-futbol',
@@ -406,7 +411,7 @@
         });
         document.getElementById('contenedorBarComuna').style.height = Math.max(300, comunas.length * 22) + 'px';
 
-        // 2. Dona Sector con iconos Font Awesome (leyenda personalizada)
+        // 2. Dona Sector con iconos Font Awesome
         const invSector = {};
         datosFiltrados.forEach(d => { invSector[d['SECTOR']] = (invSector[d['SECTOR']]||0) + d['COSTO TOTAL M$']; });
         const sectores = Object.keys(invSector);
@@ -552,22 +557,21 @@
         });
       }
 
-      // Auto carga de 1.csv
-      async function autoCargarCSV() {
+      // Auto carga desde Google Sheets
+      async function autoCargarDesdeGoogleSheets() {
         try {
-          const response = await fetch('1.csv');
+          const response = await fetch(GOOGLE_SHEETS_CSV_URL);
           if (!response.ok) {
-            throw new Error('No se pudo cargar 1.csv automáticamente');
+            throw new Error('No se pudo descargar el archivo de Google Sheets');
           }
           const arrayBuffer = await response.arrayBuffer();
           const jsonData = procesarArchivo(arrayBuffer);
           inicializarDashboard(jsonData);
           document.getElementById('autoLoadMessage').style.display = 'none';
         } catch (error) {
-          console.warn('Carga automática falló:', error);
-          // Dejar el área de subida manual visible
+          console.warn('Carga automática desde Google Sheets falló:', error);
           document.getElementById('autoLoadMessage').innerHTML = 
-            '<span class="text-danger"><i class="fas fa-exclamation-triangle"></i> No se pudo cargar 1.csv. Usa el botón para subir el archivo manualmente.</span>';
+            '<span class="text-danger"><i class="fas fa-exclamation-triangle"></i> No se pudo cargar automáticamente. Usa el botón para subir el archivo manualmente.</span>';
         }
       }
 
@@ -585,8 +589,8 @@
         }
       });
 
-      // Iniciar auto carga al cargar la página
-      autoCargarCSV();
+      // Iniciar auto carga
+      autoCargarDesdeGoogleSheets();
     })();
   </script>
 </body>

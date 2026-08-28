@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mapa de Inversión por Comuna</title>
+  <!-- Bootstrap 5 -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Papa Parse -->
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <!-- shpjs -->
+  <script src="https://unpkg.com/shpjs@4.0.4/dist/shp.min.js"></script>
+  <style>
+    body { background: #f4f7f6; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    .container-custom { max-width: 1200px; margin: auto; padding: 2rem; }
+    .card { border: none; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin-bottom: 1.5rem; }
+    .card-header { background: white; border-bottom: 1px solid #eee; font-weight: 600; border-radius: 12px 12px 0 0 !important; }
+    #map { height: 600px; border-radius: 8px; }
+    .upload-area { text-align: center; padding: 1rem; }
+    .upload-area input[type="file"] { display: none; }
+    .loading { text-align: center; padding: 2rem; color: #6c757d; }
+    .legend-gradient { width: 200px; height: 15px; background: linear-gradient(to right, #add8e6, #00008b); border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <div class="container-custom">
+    <h2 class="text-center mb-4">Mapa de Inversión por Comuna</h2>
+
+    <!-- Carga manual y recarga -->
+    <div class="upload-area mb-4">
+      <label for="csvInput" class="btn btn-outline-primary btn-sm me-2">
+        <i class="fas fa-file-csv me-1"></i> Subir CSV
+      </label>
+      <input type="file" id="csvInput" accept=".csv,.tsv,.xls,.xlsx">
+      <label for="shapeInput" class="btn btn-outline-secondary btn-sm">
+        <i class="fas fa-draw-polygon me-1"></i> Subir Shapefile ZIP
+      </label>
+      <input type="file" id="shapeInput" accept=".zip">
+      <button class="btn btn-outline-warning btn-sm ms-2" onclick="recargarDatos()">
+        <i class="fas fa-sync-alt me-1"></i> Recargar automático
+      </button>
+      <button class="btn btn-outline-info btn-sm ms-2" onclick="reajustarZoom()">
+        <i class="fas fa-search-plus me-1"></i> Reajustar zoom
+      </button>
+    </div>
+
+    <!-- Mensaje -->
+    <div id="autoLoadMessage" class="loading">
+      <i class="fas fa-spinner fa-spin"></i> Cargando datos...
+    </div>
+
+    <!-- Mapa -->
+    <div class="card">
+      <div class="card-header"><i class="fas fa-map-marked-alt me-2"></i>Distribución geográfica de la inversión</div>
+      <div class="card-body">
+        <div id="map"></div>
+        <div class="mt-3 d-flex justify-content-between align-items-start">
+          <div>
+            <strong>Leyenda</strong><br>
+            <span>Menor inversión</span>
+            <div class="legend-gradient"></div>
+            <span>Mayor inversión</span>
+          </div>
+          <div class="text-muted small">
+            <i class="fas fa-info-circle"></i> Los colores más oscuros indican mayor monto invertido.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      let datosOriginales = [];
+      let mapaLeaflet = null;
+      let capaGeoJSON = null;
+      let equivalenciasCargadas = {};
+      let nombresShapefileSet = new Set();
+      let maxInversion = 1;
+
+      const CSV_URL = '1.csv';
+      const SHAPEFILE_URL = 'COMUNAS.ZIP';
+      const EQUIVALENCIAS_URL = 'comunas_normalizadas.csv';
+
+      function normalizarNombreComuna(nombre) {
+        if (!nombre) return '';
+        return nombre
+          .toString()
+          .toUpperCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/[''"]/g, '')
+          .replace(/[^A-Z0-9]/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+      }
+
+      const equivalenciasLocales = {
+        'AYSEN': 'AISEN',
+        'OHIGGINS': 'OHIGGINS',
+        'CHOLCHOL': 'CHOL CHOL'
+      };
+
+      async function cargarEquivalencias() {
+        try {
+          const resp = await fetch(EQUIVALENCIAS_URL);
+          if (!resp.ok) throw new Error('No se pudo cargar');
+          const texto = await resp.text();
+          const lineas = texto.split('\n').slice(1);
+          lineas.forEach(linea => {
+            const partes = linea.split(',').map(s => s.replace(/"/g, '').trim());
+            if (partes.length >= 2 && partes[0] && partes[1]) {
+              equivalenciasCargadas[partes[0].toUpperCase()] = partes[1].toUpperCase();
+            }
+          });
+        } catch (e) {
+          console.warn('Error cargando equivalencias:', e);
+        }
+      }
+
+      function normalizarConEquivalencia(nombre) {
+        const nombreUpper = nombre.toUpperCase().trim();
+        if (equivalenciasCargadas[nombreUpper]) {
+          return normalizarNombreComuna(equivalenciasCargadas[nombreUpper]);
+        }
+        if (equivalenciasLocales[nombreUpper]) {
+          return normalizarNombreComuna(equivalenciasLocales[nombreUpper]);
+        }
+        return normalizarNombreComuna(nombre);
+      }
+
+      function esTexto(buffer) {
+        const bytes = new Uint8Array(buffer);
+        for (let i = 0; i < Math.min(bytes.length, 100); i++) {
+          if (bytes[i] === 0) return false;
+        }
+        return true;
+      }
+
+      function procesarCSV(arrayBuffer) {
+        let jsonData;
+        if (esTexto(arrayBuffer)) {
+          const decoder = new TextDecoder('utf-8');
+          const texto = decoder.decode(arrayBuffer);
+          const resultado = Papa.parse(texto, {
+            header: true,
+            skipEmptyLines: true,
+            delimiter: "",
+            transformHeader: h => h.trim()
+          });
+          jsonData = resultado.data;
+        } else {
+          const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+          const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+          jsonData = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
+        }
+        return jsonData;
+      }
+
+      function normalizarDatos(jsonData) {
+        return jsonData.map(row => {
+          const cleanedRow = {};
+          Object.keys(row).forEach(key => { cleanedRow[key.trim().toUpperCase()] = row[key]; });
+          let costoStr = String(cleanedRow['COSTO TOTAL M$'] || cleanedRow['COSTO TOTAL MS'] || '0').replace(/\./g, '').replace(',', '.');
+          cleanedRow['COSTO TOTAL M$'] = parseFloat(costoStr) || 0;
+          if (!cleanedRow['COMUNA'] || cleanedRow['COMUNA'].trim() === '') cleanedRow['COMUNA'] = 'Sin comuna';
+          return cleanedRow;
+        });
+      }
+
+      function formatearMiles(num) {
+        return new Intl.NumberFormat('es-CL', { maximumFractionDigits: 0 }).format(num);
+      }
+
+      function getColorComuna(monto) {
+        const ratio = Math.min(monto / maxInversion, 1);
+        const r = Math.round(173 - 120 * ratio);
+        const g = Math.round(216 - 150 * ratio);
+        const b = Math.round(230 - 180 * ratio);
+        return `rgb(${r}, ${g}, ${b})`;
+      }
+
+      function calcularInversionPorComuna() {
+        const invPorComuna = {};
+        datosOriginales.forEach(d => {
+          const comuna = d['COMUNA'];
+          const monto = Number(d['COSTO TOTAL M$']) || 0;
+          if (comuna && comuna !== 'Sin comuna') {
+            const norm = normalizarConEquivalencia(comuna);
+            invPorComuna[norm] = (invPorComuna[norm] || 0) + monto;
+          }
+        });
+        const montos = Object.values(invPorComuna).filter(m => m > 0);
+        montos.sort((a, b) => a - b);
+        if (montos.length > 0) {
+          const p90 = montos[Math.floor(montos.length * 0.90)];
+          maxInversion = p90 || montos[montos.length - 1];
+        }
+        return invPorComuna;
+      }
+
+      function actualizarMapa() {
+        if (!mapaLeaflet || !capaGeoJSON || !datosOriginales.length) return;
+        const invComunaNormalizado = calcularInversionPorComuna();
+
+        capaGeoJSON.eachLayer(layer => {
+          const nombreComuna = layer.feature.properties.COMUNA || layer.feature.properties.NOMBRE || '';
+          const nombreNorm = normalizarConEquivalencia(nombreComuna);
+          const monto = invComunaNormalizado[nombreNorm] || 0;
+          layer.setStyle({
+            fillColor: monto > 0 ? getColorComuna(monto) : '#eeeeee',
+            fillOpacity: 0.85,
+            color: '#fff',
+            weight: 1,
+            dashArray: '3'
+          });
+          layer.bindPopup(`<strong>${nombreComuna}</strong><br>Inversión: ${formatearMiles(monto)} M$`);
+        });
+      }
+
+      function reajustarZoom() {
+        if (mapaLeaflet && capaGeoJSON) {
+          const bounds = capaGeoJSON.getBounds();
+          if (bounds.isValid()) {
+            mapaLeaflet.fitBounds(bounds, { padding: [20, 20] });
+          }
+        }
+      }
+
+      function cargarShapefile(arrayBuffer) {
+        shp(arrayBuffer).then(geojson => {
+          nombresShapefileSet.clear();
+          geojson.features.forEach(feature => {
+            const nombre = feature.properties.COMUNA || feature.properties.NOMBRE || '';
+            nombresShapefileSet.add(normalizarConEquivalencia(nombre));
+          });
+
+          const nombresComunasDatos = new Set(
+            datosOriginales
+              .filter(d => d['COMUNA'] !== 'Sin comuna')
+              .map(d => normalizarConEquivalencia(d['COMUNA']))
+          );
+
+          const featuresFiltradas = geojson.features.filter(feature => {
+            const nombre = feature.properties.COMUNA || feature.properties.NOMBRE || '';
+            return nombresComunasDatos.has(normalizarConEquivalencia(nombre));
+          });
+
+          const geojsonFiltrado = { type: 'FeatureCollection', features: featuresFiltradas };
+
+          if (!mapaLeaflet) {
+            mapaLeaflet = L.map('map').setView([-38.7, -72.2], 7);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+              attribution: '&copy; OpenStreetMap contributors'
+            }).addTo(mapaLeaflet);
+          }
+
+          if (capaGeoJSON) capaGeoJSON.remove();
+          capaGeoJSON = L.geoJSON(geojsonFiltrado, {
+            style: { color: '#ccc', weight: 1, fillOpacity: 0.7 }
+          }).addTo(mapaLeaflet);
+
+          if (featuresFiltradas.length > 0) {
+            reajustarZoom();
+          }
+
+          actualizarMapa();
+        }).catch(error => {
+          console.error('Error al cargar shapefile:', error);
+          document.getElementById('autoLoadMessage').innerHTML = 
+            '<span class="text-danger"><i class="fas fa-exclamation-triangle"></i> No se pudo cargar el shapefile.</span>';
+        });
+      }
+
+      async function cargarCSV(url) {
+        try {
+          const response = await fetch(url);
+          if (!response.ok) throw new Error('No se pudo cargar CSV');
+          const arrayBuffer = await response.arrayBuffer();
+          const jsonData = procesarCSV(arrayBuffer);
+          datosOriginales = normalizarDatos(jsonData);
+          document.getElementById('autoLoadMessage').style.display = 'none';
+          if (mapaLeaflet && capaGeoJSON) {
+            actualizarMapa();
+          }
+        } catch (error) {
+          console.warn('Carga automática CSV falló:', error);
+          document.getElementById('autoLoadMessage').innerHTML = 
+            '<span class="text-danger"><i class="fas fa-exclamation-triangle"></i> No se pudo cargar 1.csv automáticamente. Usa el botón para subirlo manualmente.</span>';
+        }
+      }
+
+      async function cargarShapefileAuto() {
+        try {
+          const resp = await fetch(SHAPEFILE_URL);
+          if (resp.ok) {
+            const buffer = await resp.arrayBuffer();
+            cargarShapefile(buffer);
+          }
+        } catch (error) {
+          console.warn('Error cargando shapefile automático:', error);
+        }
+      }
+
+      async function recargarDatos() {
+        await cargarEquivalencias();
+        await cargarCSV(CSV_URL);
+        await cargarShapefileAuto();
+      }
+
+      // Iniciar
+      (async function init() {
+        await cargarEquivalencias();
+        await cargarCSV(CSV_URL);
+        await cargarShapefileAuto();
+      })();
+
+      document.getElementById('csvInput').addEventListener('change', async function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        const arrayBuffer = await file.arrayBuffer();
+        const jsonData = procesarCSV(arrayBuffer);
+        datosOriginales = normalizarDatos(jsonData);
+        document.getElementById('autoLoadMessage').style.display = 'none';
+        if (mapaLeaflet && capaGeoJSON) actualizarMapa();
+      });
+
+      document.getElementById('shapeInput').addEventListener('change', async function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        const arrayBuffer = await file.arrayBuffer();
+        cargarShapefile(arrayBuffer);
+      });
+
+      window.recargarDatos = recargarDatos;
+      window.reajustarZoom = reajustarZoom;
+    })();
+  </script>
+</body>
+</html>

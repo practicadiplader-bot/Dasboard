@@ -12,6 +12,8 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <!-- ECharts -->
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
   <!-- Papa Parse -->
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <!-- SheetJS -->
@@ -39,23 +41,19 @@
     .loading { text-align: center; padding: 3rem; font-size: 1.2rem; color: #6c757d; }
     .alert-warning-custom { background-color: #fff3cd; border-color: #ffeeba; color: #856404; border-radius: 8px; }
     .chart-scroll { overflow-y: auto; }
-    .leyenda-sector { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
-    .leyenda-item { display: flex; align-items: center; background: #f8f9fa; border-radius: 6px; padding: 4px 8px; font-size: 0.85rem; cursor: pointer; }
-    .leyenda-item i { margin-right: 5px; }
     .footer { text-align: center; padding: 1rem 0; margin-top: 2rem; color: #6c757d; font-size: 0.9rem; border-top: 1px solid #dee2e6; }
+    #treemapFuente { width: 100%; height: 400px; }
     @media print { .no-print { display: none; } .chart-container { break-inside: avoid; } }
   </style>
 </head>
 <body>
   <div class="container-fluid py-4">
-    <!-- Encabezado con logo y título -->
     <div class="header-container">
       <img src="logo.png" alt="Logo GORE" class="logo-img" onerror="this.style.display='none'">
       <h1 class="text-center flex-grow-1 mb-0">Dashboard Ejecutivo Inversiones Regionales La Araucanía</h1>
       <button class="btn btn-outline-secondary no-print" onclick="window.print()"><i class="fas fa-print me-2"></i>Imprimir / PDF</button>
     </div>
 
-    <!-- Pantalla inicial -->
     <div id="loading" class="loading">
       <div class="upload-area">
         <label for="fileInput" class="custom-file-upload">
@@ -70,12 +68,9 @@
       </div>
     </div>
 
-    <!-- Contenido -->
     <div id="dashboardContent" style="display:none;">
-      <!-- KPIs -->
       <div class="row g-3 mb-4" id="kpiRow"></div>
 
-      <!-- Filtros -->
       <div class="filter-bar row g-2 align-items-end no-print">
         <div class="col-md-3">
           <label class="form-label fw-bold">Comuna</label>
@@ -85,13 +80,17 @@
           <label class="form-label fw-bold">Sector</label>
           <select id="filterSector" class="form-select"><option value="all">Todos</option></select>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-2">
           <label class="form-label fw-bold">Etapa</label>
           <select id="filterEtapa" class="form-select"><option value="all">Todas</option></select>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-2">
           <label class="form-label fw-bold">Rate</label>
           <select id="filterRate" class="form-select"><option value="all">Todos</option></select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label fw-bold">Fuente Financiera</label>
+          <select id="filterFuente" class="form-select"><option value="all">Todas</option></select>
         </div>
         <div class="col-12 text-end">
           <button id="btnLimpiarFiltros" class="btn btn-outline-secondary btn-sm">
@@ -100,7 +99,6 @@
         </div>
       </div>
 
-      <!-- Primera fila -->
       <div class="row g-4 mb-4">
         <div class="col-lg-7">
           <div class="chart-container">
@@ -114,16 +112,14 @@
         </div>
         <div class="col-lg-5">
           <div class="chart-container">
-            <h5><i class="fas fa-chart-pie"></i>Distribución por Sector
-              <i class="fas fa-info-circle info-icon" data-bs-toggle="tooltip" title="Porcentaje del presupuesto destinado a cada sector."></i>
+            <h5><i class="fas fa-chart-pie"></i>Distribución por Fuente Financiera
+              <i class="fas fa-info-circle info-icon" data-bs-toggle="tooltip" title="Treemap de inversión por fuente financiera."></i>
             </h5>
-            <canvas id="donaSector" height="250"></canvas>
-            <div id="leyendaSector" class="leyenda-sector"></div>
+            <div id="treemapFuente"></div>
           </div>
         </div>
       </div>
 
-      <!-- Segunda fila -->
       <div class="row g-4 mb-4">
         <div class="col-lg-6">
           <div class="chart-container">
@@ -147,7 +143,6 @@
         </div>
       </div>
 
-      <!-- Tercera fila -->
       <div class="row g-4 mb-4">
         <div class="col-lg-4">
           <div class="chart-container">
@@ -177,7 +172,6 @@
         </div>
       </div>
 
-      <!-- Cuarta fila -->
       <div class="row g-4 mb-4">
         <div class="col-lg-12">
           <div class="chart-container">
@@ -191,22 +185,19 @@
         </div>
       </div>
 
-      <!-- Tabla -->
       <div class="table-container">
         <h5><i class="fas fa-table me-2"></i>Detalle de Proyectos</h5>
         <table id="tablaProyectos" class="table table-striped table-hover" style="width:100%">
-          <thead><tr><th>Código BIP</th><th>Nombre</th><th>Comuna</th><th>Etapa</th><th>Costo (M$)</th><th>Sector</th><th>Magnitud</th><th>Rate</th></tr></thead>
+          <thead><tr><th>Código BIP</th><th>Nombre</th><th>Comuna</th><th>Etapa</th><th>Costo (M$)</th><th>Sector</th><th>Magnitud</th><th>Rate</th><th>Fuente</th></tr></thead>
         </table>
       </div>
 
-      <!-- Advertencia -->
       <div class="alert alert-warning-custom mt-4 p-3 no-print">
         <i class="fas fa-exclamation-triangle me-2"></i>
         <strong>Advertencia:</strong> Los archivos pueden contener campos faltantes. Los gráficos son estimaciones aproximadas.
       </div>
     </div>
 
-    <!-- Pie de página -->
     <footer class="footer">
       <small>© 2026 - Desarrollado por Abraham Andres Castro Copa, Alumno en Práctica Ingeniería Civil Industrial Mención Informática</small>
     </footer>
@@ -217,6 +208,7 @@
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
 
@@ -225,16 +217,12 @@
       let datosOriginales = [];
       let datosFiltrados = [];
       let charts = {};
+      let treemapChart = null;
 
-      // ================= CONFIGURACIÓN =================
-      // URL de exportación CSV de la hoja de cálculo de Google Sheets
-      const GOOGLE_SHEETS_CSV_URL = 'https://docs.google.com/spreadsheets/d/12KG8l2nesaXedN0uqqCLu9YuQesgXN4_2lH2VBpu92M/export?format=csv';
-      // ==================================================
+      const GOOGLE_SHEETS_CSV_URL = 'https://docs.google.com/spreadsheets/d/1j3HugUF6YbEiyk7nVzuYOjro4Rxh9FWU/export?format=csv';
 
-      // Paleta de colores para el donut
       const paletaColores = ['#FF6384','#36A2EB','#FFCE56','#4BC0C0','#9966FF','#FF9F40','#C9CBCF','#8A2BE2','#00FA9A','#FF4500','#1E90FF','#DC143C','#FFD700','#ADFF2F','#FF69B4'];
 
-      // Función para generar escala secuencial de azules
       function getBlueScaleColors(data) {
         const max = Math.max(...data, 1);
         const min = Math.min(...data, 0);
@@ -248,46 +236,36 @@
         });
       }
 
-      // Mapa de iconos Font Awesome por sector
-      const iconosSector = {
-        'TRANSPORTE': 'fa-car',
-        'DEPORTES': 'fa-futbol',
-        'VIVIENDA Y DESARROLLO URBANO': 'fa-home',
-        'RECURSOS HIDRICOS': 'fa-tint',
-        'SALUD': 'fa-hospital',
-        'MULTISECTORIAL': 'fa-building',
-        'CULTURA Y PATRIMONIO': 'fa-landmark',
-        'RECURSOS NATURALES Y MEDIO AMBIENTE': 'fa-tree',
-        'SEGURIDAD PUBLICA': 'fa-shield-alt',
-        'EDUCACION, CULTURA Y PATRIMONIO': 'fa-graduation-cap',
-        'EDUCACIÓN': 'fa-graduation-cap',
-        'EDUCACION': 'fa-graduation-cap',
-        'JUSTICIA': 'fa-balance-scale',
-        'TURISMO Y COMERCIO': 'fa-umbrella-beach',
-        'ENERGIA': 'fa-bolt'
-      };
-
       function esTexto(buffer) {
         const bytes = new Uint8Array(buffer);
-        for (let i = 0; i < Math.min(bytes.length, 100); i++) {
-          if (bytes[i] === 0) return false;
-        }
+        for (let i = 0; i < Math.min(bytes.length, 100); i++) if (bytes[i] === 0) return false;
         return true;
       }
 
       function procesarArchivo(arrayBuffer) {
-        let jsonData;
+        let texto;
         if (esTexto(arrayBuffer)) {
           const decoder = new TextDecoder('utf-8');
-          const texto = decoder.decode(arrayBuffer);
-          const resultado = Papa.parse(texto, { header: true, skipEmptyLines: true, delimiter: "", transformHeader: h => h.trim() });
-          jsonData = resultado.data;
+          texto = decoder.decode(arrayBuffer);
         } else {
           const workbook = XLSX.read(arrayBuffer, { type: 'array' });
           const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-          jsonData = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
+          texto = XLSX.utils.sheet_to_csv(firstSheet);
         }
-        return jsonData;
+
+        const lineas = texto.split(/\r?\n/);
+        if (lineas.length > 0 && lineas[0].toUpperCase().includes('RESULTADO CONSULTA')) {
+          lineas.shift();
+        }
+        const csvLimpio = lineas.join('\n');
+
+        const resultado = Papa.parse(csvLimpio, {
+          header: true,
+          skipEmptyLines: true,
+          delimiter: "",
+          transformHeader: h => h.trim()
+        });
+        return resultado.data;
       }
 
       function normalizarDatos(jsonData) {
@@ -297,51 +275,90 @@
           let costoStr = String(cleanedRow['COSTO TOTAL M$'] || cleanedRow['COSTO TOTAL MS'] || '0').replace(/\./g, '').replace(',', '.');
           cleanedRow['COSTO TOTAL M$'] = parseFloat(costoStr) || 0;
           let magVal = cleanedRow['MAGNITUD VALOR'] || 0;
-          if (typeof magVal === 'string') {
-            magVal = magVal.replace(/\./g, '').replace(',', '.');
-            magVal = parseFloat(magVal) || 0;
-          }
+          if (typeof magVal === 'string') { magVal = magVal.replace(/\./g, '').replace(',', '.'); magVal = parseFloat(magVal) || 0; }
           cleanedRow['MAGNITUD VALOR'] = magVal;
           if (!cleanedRow['COMUNA'] || cleanedRow['COMUNA'].trim() === '') cleanedRow['COMUNA'] = 'Sin comuna';
           if (!cleanedRow['RATE'] || cleanedRow['RATE'].trim() === '') cleanedRow['RATE'] = 'Sin rate';
+          if (!cleanedRow['FUENTE FINANCIERA'] || cleanedRow['FUENTE FINANCIERA'].trim() === '') cleanedRow['FUENTE FINANCIERA'] = 'Sin fuente';
           return cleanedRow;
         });
       }
 
-      function formatearMiles(num) {
-        return new Intl.NumberFormat('es-CL', { maximumFractionDigits: 0 }).format(num);
+      function formatearMiles(num) { return new Intl.NumberFormat('es-CL', { maximumFractionDigits: 0 }).format(num); }
+
+      function actualizarTreemap() {
+        if (!treemapChart) {
+          treemapChart = echarts.init(document.getElementById('treemapFuente'));
+        }
+
+        const invFuente = {};
+        datosFiltrados.forEach(d => {
+          const fuente = d['FUENTE FINANCIERA'];
+          invFuente[fuente] = (invFuente[fuente] || 0) + d['COSTO TOTAL M$'];
+        });
+
+        const data = Object.entries(invFuente).map(([name, value]) => ({ name, value }));
+
+        const option = {
+          tooltip: {
+            formatter: function(info) {
+              return `${info.name}<br>Inversión: ${formatearMiles(info.value)} M$`;
+            }
+          },
+          series: [{
+            type: 'treemap',
+            data: data,
+            label: {
+              show: true,
+              formatter: '{b}'
+            },
+            upperLabel: {
+              show: false
+            },
+            itemStyle: {
+              borderColor: '#fff',
+              borderWidth: 1,
+              gapWidth: 1
+            },
+            levels: [
+              {
+                itemStyle: {
+                  borderColor: '#555',
+                  borderWidth: 4,
+                  gapWidth: 4
+                }
+              }
+            ]
+          }]
+        };
+
+        treemapChart.setOption(option, true);
+        treemapChart.resize();
       }
 
-      function calcularMediana(arr) {
-        const sorted = [...arr].sort((a,b)=>a-b);
-        const mid = Math.floor(sorted.length/2);
-        return sorted.length % 2 ? sorted[mid] : (sorted[mid-1]+sorted[mid])/2;
-      }
-
-      // KPIs
       function actualizarKPIs() {
         const total = datosFiltrados.reduce((s,d) => s + d['COSTO TOTAL M$'], 0);
         const numProy = datosFiltrados.length;
         const comunas = new Set(datosFiltrados.map(d => d['COMUNA']).filter(c => c !== 'Sin comuna'));
         const ejecucion = datosFiltrados.filter(d => d['ETAPA POSTULA'] === 'EJECUCION').length;
-        const sectorLider = datosFiltrados.length ? Object.entries(datosFiltrados.reduce((acc,d) => { acc[d['SECTOR']]=(acc[d['SECTOR']]||0)+d['COSTO TOTAL M$']; return acc; }, {})).sort((a,b)=>b[1]-a[1])[0][0] : '-';
+        const fuenteLider = datosFiltrados.length ? Object.entries(datosFiltrados.reduce((acc,d) => { acc[d['FUENTE FINANCIERA']]=(acc[d['FUENTE FINANCIERA']]||0)+d['COSTO TOTAL M$']; return acc; }, {})).sort((a,b)=>b[1]-a[1])[0][0] : '-';
         const kpiRow = document.getElementById('kpiRow');
         kpiRow.innerHTML = `
           <div class="col-md-3"><div class="kpi-card bg-primary"><div class="d-flex justify-content-between"><div><div class="kpi-label">Inversión Total</div><div class="kpi-value">${formatearMiles(total)} M$</div></div><i class="fas fa-dollar-sign kpi-icon"></i></div></div></div>
           <div class="col-md-2"><div class="kpi-card bg-success"><div class="d-flex justify-content-between"><div><div class="kpi-label">Proyectos</div><div class="kpi-value">${numProy}</div></div><i class="fas fa-tasks kpi-icon"></i></div></div></div>
           <div class="col-md-2"><div class="kpi-card bg-info"><div class="d-flex justify-content-between"><div><div class="kpi-label">Comunas</div><div class="kpi-value">${comunas.size}</div></div><i class="fas fa-map-marker-alt kpi-icon"></i></div></div></div>
           <div class="col-md-2"><div class="kpi-card bg-warning text-dark"><div class="d-flex justify-content-between"><div><div class="kpi-label">En Ejecución</div><div class="kpi-value">${ejecucion}</div></div><i class="fas fa-hard-hat kpi-icon"></i></div></div></div>
-          <div class="col-md-3"><div class="kpi-card bg-secondary"><div class="d-flex justify-content-between"><div><div class="kpi-label">Sector Líder</div><div class="kpi-value" style="font-size:1.2rem;">${sectorLider}</div></div><i class="fas fa-chart-line kpi-icon"></i></div></div></div>
+          <div class="col-md-3"><div class="kpi-card bg-secondary"><div class="d-flex justify-content-between"><div><div class="kpi-label">Fuente Líder</div><div class="kpi-value" style="font-size:1.2rem;">${fuenteLider}</div></div><i class="fas fa-chart-line kpi-icon"></i></div></div></div>
         `;
       }
 
-      // Filtros
       function actualizarFiltros() {
         const comunas = [...new Set(datosOriginales.map(d => d['COMUNA']))].sort();
         const sectores = [...new Set(datosOriginales.map(d => d['SECTOR']))].sort();
         const etapas = [...new Set(datosOriginales.map(d => d['ETAPA POSTULA']))].sort();
         const rates = [...new Set(datosOriginales.map(d => d['RATE']))].sort();
-        ['filterComuna','filterSector','filterEtapa','filterRate'].forEach(id => {
+        const fuentes = [...new Set(datosOriginales.map(d => d['FUENTE FINANCIERA']))].sort();
+        ['filterComuna','filterSector','filterEtapa','filterRate','filterFuente'].forEach(id => {
           const select = document.getElementById(id);
           select.innerHTML = '<option value="all">Todas/Todos</option>';
         });
@@ -349,6 +366,7 @@
         sectores.forEach(s => { const opt = document.createElement('option'); opt.value=s; opt.textContent=s; document.getElementById('filterSector').appendChild(opt); });
         etapas.forEach(e => { const opt = document.createElement('option'); opt.value=e; opt.textContent=e; document.getElementById('filterEtapa').appendChild(opt); });
         rates.forEach(r => { const opt = document.createElement('option'); opt.value=r; opt.textContent=r; document.getElementById('filterRate').appendChild(opt); });
+        fuentes.forEach(f => { const opt = document.createElement('option'); opt.value=f; opt.textContent=f; document.getElementById('filterFuente').appendChild(opt); });
       }
 
       function filtrarDatos() {
@@ -356,41 +374,22 @@
         const sector = document.getElementById('filterSector').value;
         const etapa = document.getElementById('filterEtapa').value;
         const rate = document.getElementById('filterRate').value;
+        const fuente = document.getElementById('filterFuente').value;
         datosFiltrados = datosOriginales.filter(d => {
           let ok = true;
           if (comuna !== 'all' && d['COMUNA'] !== comuna) ok = false;
           if (sector !== 'all' && d['SECTOR'] !== sector) ok = false;
           if (etapa !== 'all' && d['ETAPA POSTULA'] !== etapa) ok = false;
           if (rate !== 'all' && d['RATE'] !== rate) ok = false;
+          if (fuente !== 'all' && d['FUENTE FINANCIERA'] !== fuente) ok = false;
           return ok;
         });
         actualizarKPIs();
         actualizarGraficos();
         actualizarTabla();
+        actualizarTreemap();
       }
 
-      // Función para crear leyenda HTML personalizada
-      function crearLeyendaSector(sectores, colores, chart) {
-        const contenedor = document.getElementById('leyendaSector');
-        contenedor.innerHTML = '';
-        sectores.forEach((sector, idx) => {
-          const item = document.createElement('div');
-          item.className = 'leyenda-item';
-          item.style.cursor = 'pointer';
-          const icono = iconosSector[sector] || 'fa-circle';
-          item.innerHTML = `<i class="fas ${icono}" style="color:${colores[idx]};"></i> ${sector}`;
-          item.addEventListener('click', function() {
-            const meta = chart.getDatasetMeta(0);
-            const isHidden = meta.data[idx].hidden;
-            meta.data[idx].hidden = !isHidden;
-            item.style.opacity = isHidden ? 1 : 0.5;
-            chart.update();
-          });
-          contenedor.appendChild(item);
-        });
-      }
-
-      // Gráficos
       function actualizarGraficos() {
         Object.values(charts).forEach(c => { if (c) c.destroy(); });
         charts = {};
@@ -411,19 +410,8 @@
         });
         document.getElementById('contenedorBarComuna').style.height = Math.max(300, comunas.length * 22) + 'px';
 
-        // 2. Dona Sector con iconos Font Awesome
-        const invSector = {};
-        datosFiltrados.forEach(d => { invSector[d['SECTOR']] = (invSector[d['SECTOR']]||0) + d['COSTO TOTAL M$']; });
-        const sectores = Object.keys(invSector);
-        const sectorData = Object.values(invSector);
-        const coloresSector = paletaColores.slice(0, sectores.length);
-        const ctxDona = document.getElementById('donaSector').getContext('2d');
-        charts.donaSector = new Chart(ctxDona, {
-          type: 'doughnut',
-          data: { labels: sectores, datasets: [{ data: sectorData, backgroundColor: coloresSector, borderWidth: 1 }] },
-          options: { responsive: true, plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${formatearMiles(ctx.raw)} M$ (${((ctx.raw / ctx.dataset.data.reduce((a,b)=>a+b,0))*100).toFixed(1)}%)` } } } }
-        });
-        crearLeyendaSector(sectores, coloresSector, charts.donaSector);
+        // 2. Treemap de Fuente Financiera
+        actualizarTreemap();
 
         // 3. Top 20 proyectos
         const top20 = [...datosFiltrados].sort((a,b) => b['COSTO TOTAL M$'] - a['COSTO TOTAL M$']).slice(0,20);
@@ -510,7 +498,6 @@
         document.getElementById('barMagnitud').parentElement.style.height = Math.max(200, magnitudLabels.length * 25) + 'px';
       }
 
-      // Tabla
       function actualizarTabla() {
         if ($.fn.DataTable.isDataTable('#tablaProyectos')) $('#tablaProyectos').DataTable().destroy();
         $('#tablaProyectos').DataTable({
@@ -523,7 +510,8 @@
             { data: 'COSTO TOTAL M$', render: data => formatearMiles(data) + ' M$' },
             { data: 'SECTOR' },
             { data: 'MAGNITUD', render: (data, type, row) => `${row['MAGNITUD']} (${row['MAGNITUD VALOR']})` },
-            { data: 'RATE' }
+            { data: 'RATE' },
+            { data: 'FUENTE FINANCIERA' }
           ],
           language: { url: 'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-CL.json' },
           pageLength: 10,
@@ -532,7 +520,6 @@
         });
       }
 
-      // Función para inicializar el dashboard tras cargar datos
       function inicializarDashboard(jsonData) {
         datosOriginales = normalizarDatos(jsonData);
         document.getElementById('loading').style.display = 'none';
@@ -542,40 +529,38 @@
         actualizarKPIs();
         actualizarGraficos();
         actualizarTabla();
+        actualizarTreemap();
         var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
         tooltipTriggerList.map(function (tooltipTriggerEl) { return new bootstrap.Tooltip(tooltipTriggerEl); });
         document.getElementById('filterComuna').addEventListener('change', filtrarDatos);
         document.getElementById('filterSector').addEventListener('change', filtrarDatos);
         document.getElementById('filterEtapa').addEventListener('change', filtrarDatos);
         document.getElementById('filterRate').addEventListener('change', filtrarDatos);
+        document.getElementById('filterFuente').addEventListener('change', filtrarDatos);
         document.getElementById('btnLimpiarFiltros').addEventListener('click', function() {
           document.getElementById('filterComuna').value = 'all';
           document.getElementById('filterSector').value = 'all';
           document.getElementById('filterEtapa').value = 'all';
           document.getElementById('filterRate').value = 'all';
+          document.getElementById('filterFuente').value = 'all';
           filtrarDatos();
         });
       }
 
-      // Auto carga desde Google Sheets
       async function autoCargarDesdeGoogleSheets() {
         try {
           const response = await fetch(GOOGLE_SHEETS_CSV_URL);
-          if (!response.ok) {
-            throw new Error('No se pudo descargar el archivo de Google Sheets');
-          }
+          if (!response.ok) throw new Error('No se pudo descargar el archivo de Google Sheets');
           const arrayBuffer = await response.arrayBuffer();
           const jsonData = procesarArchivo(arrayBuffer);
           inicializarDashboard(jsonData);
           document.getElementById('autoLoadMessage').style.display = 'none';
         } catch (error) {
           console.warn('Carga automática desde Google Sheets falló:', error);
-          document.getElementById('autoLoadMessage').innerHTML = 
-            '<span class="text-danger"><i class="fas fa-exclamation-triangle"></i> No se pudo cargar automáticamente. Usa el botón para subir el archivo manualmente.</span>';
+          document.getElementById('autoLoadMessage').innerHTML = '<span class="text-danger"><i class="fas fa-exclamation-triangle"></i> No se pudo cargar automáticamente. Usa el botón para subir el archivo manualmente.</span>';
         }
       }
 
-      // Manejo de subida manual
       document.getElementById('fileInput').addEventListener('change', async function(e) {
         const file = e.target.files[0];
         if (!file) return;
@@ -589,7 +574,6 @@
         }
       });
 
-      // Iniciar auto carga
       autoCargarDesdeGoogleSheets();
     })();
   </script>

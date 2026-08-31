@@ -221,18 +221,20 @@
 
       const GOOGLE_SHEETS_CSV_URL = 'https://docs.google.com/spreadsheets/d/1j3HugUF6YbEiyk7nVzuYOjro4Rxh9FWU/export?format=csv';
 
-      const paletaColores = ['#FF6384','#36A2EB','#FFCE56','#4BC0C0','#9966FF','#FF9F40','#C9CBCF','#8A2BE2','#00FA9A','#FF4500','#1E90FF','#DC143C','#FFD700','#ADFF2F','#FF69B4'];
+      // Paleta profesional sobria
+      const professionalPalette = ['#1f77b4', '#2ca02c', '#ff7f0e', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf', '#aec7e8', '#98df8a', '#ffbb78', '#ff9896', '#c5b0d5', '#c49c94'];
+      const blueSequential = ['#08306b', '#08519c', '#2171b5', '#4292c6', '#6baed6', '#9ecae1', '#c6dbef', '#eff3ff'];
 
+      // Función corregida: mayor valor -> tono más oscuro
       function getBlueScaleColors(data) {
         const max = Math.max(...data, 1);
         const min = Math.min(...data, 0);
         const rango = max - min || 1;
         return data.map(valor => {
           const ratio = (valor - min) / rango;
-          const r = Math.round(173 - 173 * ratio);
-          const g = Math.round(216 - 216 * ratio);
-          const b = Math.round(230 - 91 * ratio);
-          return `rgb(${r}, ${g}, ${b})`;
+          // Invertir índice para que valores altos tomen colores oscuros (índices bajos)
+          const index = Math.min(Math.floor((1 - ratio) * (blueSequential.length - 1)), blueSequential.length - 1);
+          return blueSequential[index];
         });
       }
 
@@ -297,7 +299,13 @@
           invFuente[fuente] = (invFuente[fuente] || 0) + d['COSTO TOTAL M$'];
         });
 
-        const data = Object.entries(invFuente).map(([name, value]) => ({ name, value }));
+        const data = Object.entries(invFuente).map(([name, value], index) => ({
+          name,
+          value,
+          itemStyle: {
+            color: professionalPalette[index % professionalPalette.length]
+          }
+        }));
 
         const option = {
           tooltip: {
@@ -319,16 +327,7 @@
               borderColor: '#fff',
               borderWidth: 1,
               gapWidth: 1
-            },
-            levels: [
-              {
-                itemStyle: {
-                  borderColor: '#555',
-                  borderWidth: 4,
-                  gapWidth: 4
-                }
-              }
-            ]
+            }
           }]
         };
 

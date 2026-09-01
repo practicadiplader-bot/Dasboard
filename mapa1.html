@@ -83,9 +83,12 @@
       let nombresShapefileSet = new Set();
       let maxInversion = 1;
 
-      const CSV_URL = '1.csv';
+      // ================= CONFIGURACIÓN =================
+      // URL de exportación CSV de la hoja de cálculo de Google Sheets
+      const CSV_URL = 'https://docs.google.com/spreadsheets/d/1j3HugUF6YbEiyk7nVzuYOjro4Rxh9FWU/export?format=csv';
       const SHAPEFILE_URL = 'COMUNAS.ZIP';
       const EQUIVALENCIAS_URL = 'comunas_normalizadas.csv';
+      // ==================================================
 
       function normalizarNombreComuna(nombre) {
         if (!nombre) return '';
@@ -143,23 +146,30 @@
       }
 
       function procesarCSV(arrayBuffer) {
-        let jsonData;
+        let texto;
         if (esTexto(arrayBuffer)) {
           const decoder = new TextDecoder('utf-8');
-          const texto = decoder.decode(arrayBuffer);
-          const resultado = Papa.parse(texto, {
-            header: true,
-            skipEmptyLines: true,
-            delimiter: "",
-            transformHeader: h => h.trim()
-          });
-          jsonData = resultado.data;
+          texto = decoder.decode(arrayBuffer);
         } else {
           const workbook = XLSX.read(arrayBuffer, { type: 'array' });
           const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-          jsonData = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
+          texto = XLSX.utils.sheet_to_csv(firstSheet);
         }
-        return jsonData;
+
+        // Eliminar fila de título si existe
+        const lineas = texto.split(/\r?\n/);
+        if (lineas.length > 0 && lineas[0].toUpperCase().includes('RESULTADO CONSULTA')) {
+          lineas.shift();
+        }
+        const csvLimpio = lineas.join('\n');
+
+        const resultado = Papa.parse(csvLimpio, {
+          header: true,
+          skipEmptyLines: true,
+          delimiter: "",
+          transformHeader: h => h.trim()
+        });
+        return resultado.data;
       }
 
       function normalizarDatos(jsonData) {
@@ -291,7 +301,7 @@
         } catch (error) {
           console.warn('Carga automática CSV falló:', error);
           document.getElementById('autoLoadMessage').innerHTML = 
-            '<span class="text-danger"><i class="fas fa-exclamation-triangle"></i> No se pudo cargar 1.csv automáticamente. Usa el botón para subirlo manualmente.</span>';
+            '<span class="text-danger"><i class="fas fa-exclamation-triangle"></i> No se pudo cargar el CSV automáticamente. Usa el botón para subirlo manualmente.</span>';
         }
       }
 

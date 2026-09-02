@@ -14,6 +14,11 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <!-- ECharts -->
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- shpjs -->
+  <script src="https://unpkg.com/shpjs@4.0.4/dist/shp.min.js"></script>
   <!-- Papa Parse -->
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <!-- SheetJS -->
@@ -26,7 +31,7 @@
     .kpi-icon { font-size: 2.5rem; opacity: 0.8; }
     .kpi-value { font-size: 1.8rem; font-weight: bold; }
     .kpi-label { font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.5px; }
-    .filter-bar, .chart-container, .table-container {
+    .filter-bar, .chart-container, .table-container, .map-container {
       background: white; border-radius: 12px; padding: 1.2rem;
       box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin-bottom: 1.5rem;
     }
@@ -43,6 +48,13 @@
     .chart-scroll { overflow-y: auto; }
     .footer { text-align: center; padding: 1rem 0; margin-top: 2rem; color: #6c757d; font-size: 0.9rem; border-top: 1px solid #dee2e6; }
     #treemapFuente { width: 100%; height: 400px; }
+    .map-square { aspect-ratio: 1 / 1; width: 100%; }
+    #mapaCoropletico { height: 100%; width: 100%; border-radius: 8px; }
+    .legend-title { font-weight: 600; margin-bottom: 8px; color: #1e3a5f; }
+    .legend-list { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; }
+    .legend-item { display: flex; align-items: center; }
+    .legend-color { width: 16px; height: 16px; border-radius: 3px; margin-right: 8px; }
+    .legend-range { color: #333; }
     @media print { .no-print { display: none; } .chart-container { break-inside: avoid; } }
   </style>
 </head>
@@ -99,14 +111,19 @@
         </div>
       </div>
 
+      <!-- Primera fila: Mapa de inversión por comuna (izquierda) y Treemap (derecha) -->
       <div class="row g-4 mb-4">
         <div class="col-lg-7">
           <div class="chart-container">
-            <h5><i class="fas fa-chart-bar"></i>Inversión por Comuna
-              <i class="fas fa-info-circle info-icon" data-bs-toggle="tooltip" title="Monto total invertido en cada comuna. Barras ordenadas de mayor a menor."></i>
+            <h5><i class="fas fa-map-marked-alt"></i>Inversión por Comuna
+              <i class="fas fa-info-circle info-icon" data-bs-toggle="tooltip" title="Distribución geográfica de la inversión. Colores más oscuros indican mayor monto."></i>
             </h5>
-            <div id="contenedorBarComuna" style="height:400px; overflow-y:auto;">
-              <canvas id="barComuna"></canvas>
+            <div class="map-square">
+              <div id="mapaCoropletico"></div>
+            </div>
+            <div class="mt-3" id="legendContainer">
+              <div class="legend-title"><i class="fas fa-chart-bar me-2"></i>Rangos de inversión (millones de pesos)</div>
+              <div id="legendText" class="legend-list"></div>
             </div>
           </div>
         </div>
@@ -120,6 +137,7 @@
         </div>
       </div>
 
+      <!-- Segunda fila: Top 20 y Proyectos por Comuna -->
       <div class="row g-4 mb-4">
         <div class="col-lg-6">
           <div class="chart-container">
@@ -143,6 +161,7 @@
         </div>
       </div>
 
+      <!-- Tercera fila -->
       <div class="row g-4 mb-4">
         <div class="col-lg-4">
           <div class="chart-container">
@@ -172,6 +191,7 @@
         </div>
       </div>
 
+      <!-- Cuarta fila: Magnitud -->
       <div class="row g-4 mb-4">
         <div class="col-lg-12">
           <div class="chart-container">
@@ -185,6 +205,7 @@
         </div>
       </div>
 
+      <!-- Tabla -->
       <div class="table-container">
         <h5><i class="fas fa-table me-2"></i>Detalle de Proyectos</h5>
         <table id="tablaProyectos" class="table table-striped table-hover" style="width:100%">
@@ -211,6 +232,8 @@
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/shpjs@4.0.4/dist/shp.min.js"></script>
 
   <script>
     (function() {
@@ -218,21 +241,67 @@
       let datosFiltrados = [];
       let charts = {};
       let treemapChart = null;
+      let mapaLeaflet = null;
+      let capaGeoJSON = null;
+      let equivalenciasCargadas = {};
+      let nombresShapefileSet = new Set();
+      let comunaFiltrada = 'all';
 
       const GOOGLE_SHEETS_CSV_URL = 'https://docs.google.com/spreadsheets/d/1j3HugUF6YbEiyk7nVzuYOjro4Rxh9FWU/export?format=csv';
+      const SHAPEFILE_URL = 'COMUNAS.ZIP';
+      const EQUIVALENCIAS_URL = 'comunas_normalizadas.csv';
 
-      // Paleta profesional sobria
       const professionalPalette = ['#1f77b4', '#2ca02c', '#ff7f0e', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf', '#aec7e8', '#98df8a', '#ffbb78', '#ff9896', '#c5b0d5', '#c49c94'];
       const blueSequential = ['#08306b', '#08519c', '#2171b5', '#4292c6', '#6baed6', '#9ecae1', '#c6dbef', '#eff3ff'];
+      const bluePalette5 = ['#eff3ff', '#c6dbef', '#9ecae1', '#4292c6', '#08306b'];
 
-      // Función corregida: mayor valor -> tono más oscuro
+      function normalizarNombreComuna(nombre) {
+        if (!nombre) return '';
+        return nombre
+          .toString()
+          .toUpperCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/[''"]/g, '')
+          .replace(/[^A-Z0-9]/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+      }
+
+      const equivalenciasLocales = {
+        'AYSEN': 'AISEN',
+        'OHIGGINS': 'OHIGGINS',
+        'CHOLCHOL': 'CHOL CHOL'
+      };
+
+      async function cargarEquivalencias() {
+        try {
+          const resp = await fetch(EQUIVALENCIAS_URL);
+          if (!resp.ok) throw new Error('No se pudo cargar');
+          const texto = await resp.text();
+          const lineas = texto.split('\n').slice(1);
+          lineas.forEach(linea => {
+            const partes = linea.split(',').map(s => s.replace(/"/g, '').trim());
+            if (partes.length >= 2 && partes[0] && partes[1]) {
+              equivalenciasCargadas[partes[0].toUpperCase()] = partes[1].toUpperCase();
+            }
+          });
+        } catch (e) { console.warn('Error cargando equivalencias:', e); }
+      }
+
+      function normalizarConEquivalencia(nombre) {
+        const nombreUpper = nombre.toUpperCase().trim();
+        if (equivalenciasCargadas[nombreUpper]) return normalizarNombreComuna(equivalenciasCargadas[nombreUpper]);
+        if (equivalenciasLocales[nombreUpper]) return normalizarNombreComuna(equivalenciasLocales[nombreUpper]);
+        return normalizarNombreComuna(nombre);
+      }
+
       function getBlueScaleColors(data) {
         const max = Math.max(...data, 1);
         const min = Math.min(...data, 0);
         const rango = max - min || 1;
         return data.map(valor => {
           const ratio = (valor - min) / rango;
-          // Invertir índice para que valores altos tomen colores oscuros (índices bajos)
           const index = Math.min(Math.floor((1 - ratio) * (blueSequential.length - 1)), blueSequential.length - 1);
           return blueSequential[index];
         });
@@ -287,6 +356,181 @@
       }
 
       function formatearMiles(num) { return new Intl.NumberFormat('es-CL', { maximumFractionDigits: 0 }).format(num); }
+      function formatearMillones(num) { return (num / 1000).toFixed(1) + 'M'; }
+
+      function calcularInversionPorComuna(datos) {
+        const invPorComuna = {};
+        datos.forEach(d => {
+          const comuna = d['COMUNA'];
+          const monto = Number(d['COSTO TOTAL M$']) || 0;
+          if (comuna && comuna !== 'Sin comuna') {
+            const norm = normalizarConEquivalencia(comuna);
+            invPorComuna[norm] = (invPorComuna[norm] || 0) + monto;
+          }
+        });
+        return invPorComuna;
+      }
+
+      function crearClasificacionCuantiles(invPorComuna) {
+        const montos = Object.values(invPorComuna).filter(m => m > 0).sort((a,b) => a - b);
+        if (montos.length === 0) return { limites: [0, 1], getClase: () => 0 };
+
+        if (montos.length < 5) {
+          const min = montos[0];
+          const max = montos[montos.length - 1];
+          const limites = [min, min, min, min, min, max];
+          return {
+            limites,
+            getClase(monto) {
+              if (monto >= max) return 4;
+              if (monto <= min) return 0;
+              return 2;
+            }
+          };
+        }
+
+        const n = montos.length;
+        const q1 = montos[Math.floor(n * 0.2)];
+        const q2 = montos[Math.floor(n * 0.4)];
+        const q3 = montos[Math.floor(n * 0.6)];
+        const q4 = montos[Math.floor(n * 0.8)];
+        const max = montos[n - 1];
+        const min = montos[0];
+
+        const limites = [min, q1, q2, q3, q4, max];
+
+        return {
+          limites,
+          getClase(monto) {
+            if (monto <= q1) return 0;
+            if (monto <= q2) return 1;
+            if (monto <= q3) return 2;
+            if (monto <= q4) return 3;
+            return 4;
+          }
+        };
+      }
+
+      function actualizarMapa() {
+        if (!mapaLeaflet || !capaGeoJSON || !datosFiltrados.length) return;
+        const invPorComuna = calcularInversionPorComuna(datosFiltrados);
+        const clasificacion = crearClasificacionCuantiles(invPorComuna);
+
+        const legendContainer = document.getElementById('legendContainer');
+        if (comunaFiltrada !== 'all') {
+          legendContainer.style.display = 'none';
+        } else {
+          legendContainer.style.display = 'block';
+          const legendDiv = document.getElementById('legendText');
+          legendDiv.innerHTML = '';
+          for (let i = 0; i < 5; i++) {
+            const minMill = formatearMillones(clasificacion.limites[i]);
+            const maxMill = formatearMillones(clasificacion.limites[i+1]);
+            const div = document.createElement('div');
+            div.className = 'legend-item';
+            div.innerHTML = `<span class="legend-color" style="background:${bluePalette5[i]};"></span><span class="legend-range">${minMill} - ${maxMill}</span>`;
+            legendDiv.appendChild(div);
+          }
+        }
+
+        capaGeoJSON.eachLayer(layer => {
+          const nombreComuna = layer.feature.properties.COMUNA || layer.feature.properties.NOMBRE || '';
+          const nombreNorm = normalizarConEquivalencia(nombreComuna);
+          const monto = invPorComuna[nombreNorm] || 0;
+          let fillColor = '#eeeeee';
+          if (monto > 0) {
+            const clase = clasificacion.getClase(monto);
+            fillColor = bluePalette5[clase];
+          }
+          layer.setStyle({
+            fillColor: fillColor,
+            fillOpacity: 0.85,
+            color: '#fff',
+            weight: 1,
+            dashArray: '3'
+          });
+          layer.bindPopup(`<strong>${nombreComuna}</strong><br>Inversión: ${formatearMiles(monto)} M$`);
+          layer._nombreNorm = nombreNorm;
+        });
+
+        if (comunaFiltrada !== 'all') {
+          const comunaNorm = normalizarConEquivalencia(comunaFiltrada);
+          capaGeoJSON.eachLayer(layer => {
+            if (layer._nombreNorm === comunaNorm) {
+              layer.setStyle({
+                fillColor: '#08306b',
+                fillOpacity: 0.9,
+                color: '#08306b',
+                weight: 2,
+                dashArray: ''
+              });
+              layer.bringToFront();
+            }
+          });
+        }
+      }
+
+      function cargarShapefile(arrayBuffer) {
+        shp(arrayBuffer).then(geojson => {
+          nombresShapefileSet.clear();
+          geojson.features.forEach(feature => {
+            const nombre = feature.properties.COMUNA || feature.properties.NOMBRE || '';
+            nombresShapefileSet.add(normalizarConEquivalencia(nombre));
+          });
+
+          const nombresComunasDatos = new Set(
+            datosOriginales
+              .filter(d => d['COMUNA'] !== 'Sin comuna')
+              .map(d => normalizarConEquivalencia(d['COMUNA']))
+          );
+
+          const featuresFiltradas = geojson.features.filter(feature => {
+            const nombre = feature.properties.COMUNA || feature.properties.NOMBRE || '';
+            return nombresComunasDatos.has(normalizarConEquivalencia(nombre));
+          });
+
+          const geojsonFiltrado = { type: 'FeatureCollection', features: featuresFiltradas };
+
+          if (!mapaLeaflet) {
+            mapaLeaflet = L.map('mapaCoropletico', {
+              center: [-38.7, -72.2],
+              zoom: 8,
+              zoomControl: true
+            });
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+              attribution: '&copy; OpenStreetMap contributors'
+            }).addTo(mapaLeaflet);
+          }
+
+          if (capaGeoJSON) capaGeoJSON.remove();
+          capaGeoJSON = L.geoJSON(geojsonFiltrado, {
+            style: { color: '#ccc', weight: 1, fillOpacity: 0.7 }
+          }).addTo(mapaLeaflet);
+
+          // Ajustar el tamaño y hacer zoom automático
+          setTimeout(() => {
+            mapaLeaflet.invalidateSize();
+            if (featuresFiltradas.length > 0) {
+              const bounds = capaGeoJSON.getBounds();
+              if (bounds.isValid()) {
+                // Zoom más ajustado: padding pequeño y zoom máximo alto
+                mapaLeaflet.fitBounds(bounds, {
+                  padding: [5, 5],
+                  maxZoom: 12
+                });
+                // Limitar el área para que no se desplace fuera de la región
+                mapaLeaflet.setMaxBounds(bounds.pad(0.05));
+              }
+            } else {
+              mapaLeaflet.setView([-38.7, -72.2], 8);
+            }
+          }, 100);
+
+          actualizarMapa();
+        }).catch(error => {
+          console.error('Error al cargar shapefile:', error);
+        });
+      }
 
       function actualizarTreemap() {
         if (!treemapChart) {
@@ -302,32 +546,17 @@
         const data = Object.entries(invFuente).map(([name, value], index) => ({
           name,
           value,
-          itemStyle: {
-            color: professionalPalette[index % professionalPalette.length]
-          }
+          itemStyle: { color: professionalPalette[index % professionalPalette.length] }
         }));
 
         const option = {
-          tooltip: {
-            formatter: function(info) {
-              return `${info.name}<br>Inversión: ${formatearMiles(info.value)} M$`;
-            }
-          },
+          tooltip: { formatter: info => `${info.name}<br>Inversión: ${formatearMiles(info.value)} M$` },
           series: [{
             type: 'treemap',
             data: data,
-            label: {
-              show: true,
-              formatter: '{b}'
-            },
-            upperLabel: {
-              show: false
-            },
-            itemStyle: {
-              borderColor: '#fff',
-              borderWidth: 1,
-              gapWidth: 1
-            }
+            label: { show: true, formatter: '{b}' },
+            upperLabel: { show: false },
+            itemStyle: { borderColor: '#fff', borderWidth: 1, gapWidth: 1 }
           }]
         };
 
@@ -369,7 +598,8 @@
       }
 
       function filtrarDatos() {
-        const comuna = document.getElementById('filterComuna').value;
+        comunaFiltrada = document.getElementById('filterComuna').value;
+        const comuna = comunaFiltrada;
         const sector = document.getElementById('filterSector').value;
         const etapa = document.getElementById('filterEtapa').value;
         const rate = document.getElementById('filterRate').value;
@@ -387,32 +617,14 @@
         actualizarGraficos();
         actualizarTabla();
         actualizarTreemap();
+        actualizarMapa();
       }
 
       function actualizarGraficos() {
         Object.values(charts).forEach(c => { if (c) c.destroy(); });
         charts = {};
 
-        // 1. Inversión por Comuna
-        const invComuna = {};
-        datosFiltrados.forEach(d => { if (d['COMUNA'] !== 'Sin comuna') invComuna[d['COMUNA']] = (invComuna[d['COMUNA']]||0) + d['COSTO TOTAL M$']; });
-        const comunas = Object.keys(invComuna).sort((a,b) => invComuna[b] - invComuna[a]);
-        const montos = comunas.map(c => invComuna[c]);
-        const coloresComuna = getBlueScaleColors(montos);
-        const maxLen = Math.max(...comunas.map(c => c.length), 10);
-        const fontSize = maxLen > 20 ? 10 : 12;
-        const ctxBarComuna = document.getElementById('barComuna').getContext('2d');
-        charts.barComuna = new Chart(ctxBarComuna, {
-          type: 'bar',
-          data: { labels: comunas, datasets: [{ label: 'Inversión (M$)', data: montos, backgroundColor: coloresComuna, borderRadius: 3 }] },
-          options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${formatearMiles(ctx.raw)} M$` } } }, scales: { x: { ticks: { callback: v => formatearMiles(v) } }, y: { ticks: { font: { size: fontSize }, autoSkip: false } } } }
-        });
-        document.getElementById('contenedorBarComuna').style.height = Math.max(300, comunas.length * 22) + 'px';
-
-        // 2. Treemap de Fuente Financiera
-        actualizarTreemap();
-
-        // 3. Top 20 proyectos
+        // Top 20 proyectos
         const top20 = [...datosFiltrados].sort((a,b) => b['COSTO TOTAL M$'] - a['COSTO TOTAL M$']).slice(0,20);
         const top20Labels = top20.map(d => d['NOMBRE INICIATIVA'].length > 30 ? d['NOMBRE INICIATIVA'].substring(0,28)+'...' : d['NOMBRE INICIATIVA']);
         const top20Costos = top20.map(d => d['COSTO TOTAL M$']);
@@ -425,7 +637,7 @@
         });
         document.getElementById('barTop20').parentElement.style.height = Math.max(300, top20.length * 25) + 'px';
 
-        // 4. Número de proyectos por comuna
+        // Número de proyectos por comuna
         const proyComuna = {};
         datosFiltrados.forEach(d => { if (d['COMUNA'] !== 'Sin comuna') proyComuna[d['COMUNA']] = (proyComuna[d['COMUNA']]||0) + 1; });
         const proyComunaLabels = Object.keys(proyComuna).sort((a,b) => proyComuna[b] - proyComuna[a]);
@@ -435,11 +647,11 @@
         charts.barProyectosComuna = new Chart(ctxProyComuna, {
           type: 'bar',
           data: { labels: proyComunaLabels, datasets: [{ label: 'Proyectos', data: proyComunaData, backgroundColor: coloresProyComuna, borderRadius: 3 }] },
-          options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { ticks: { font: { size: fontSize }, autoSkip: false } } } }
+          options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { ticks: { font: { size: 12 }, autoSkip: false } } } }
         });
         document.getElementById('barProyectosComuna').parentElement.style.height = Math.max(300, proyComunaLabels.length * 22) + 'px';
 
-        // 5. Inversión por Etapa
+        // Inversión por Etapa
         const invEtapa = {};
         datosFiltrados.forEach(d => { invEtapa[d['ETAPA POSTULA']] = (invEtapa[d['ETAPA POSTULA']]||0) + d['COSTO TOTAL M$']; });
         const etapaLabels = Object.keys(invEtapa);
@@ -452,7 +664,7 @@
           options: { responsive: true, plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${formatearMiles(ctx.raw)} M$` } } }, scales: { y: { ticks: { callback: v => formatearMiles(v) } } } }
         });
 
-        // 6. Proyectos por Sector
+        // Proyectos por Sector
         const proySector = {};
         datosFiltrados.forEach(d => { proySector[d['SECTOR']] = (proySector[d['SECTOR']]||0) + 1; });
         const proySectorLabels = Object.keys(proySector).sort((a,b) => proySector[b] - proySector[a]);
@@ -466,7 +678,7 @@
         });
         document.getElementById('barProyectosSector').parentElement.style.height = '300px';
 
-        // 7. Proyectos por Rango de Costo
+        // Proyectos por Rango de Costo
         const rangos = [
           { label: '< 100M', min: 0, max: 100000 },
           { label: '100M - 500M', min: 100001, max: 500000 },
@@ -482,7 +694,7 @@
           options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { ticks: { precision: 0 } } } }
         });
 
-        // 8. Inversión por Tipo de Magnitud
+        // Inversión por Tipo de Magnitud
         const invMagnitud = {};
         datosFiltrados.forEach(d => { invMagnitud[d['MAGNITUD']] = (invMagnitud[d['MAGNITUD']]||0) + d['COSTO TOTAL M$']; });
         const magnitudLabels = Object.keys(invMagnitud).sort((a,b) => invMagnitud[b] - invMagnitud[a]);
@@ -525,6 +737,7 @@
         document.getElementById('dashboardContent').style.display = 'block';
         actualizarFiltros();
         datosFiltrados = [...datosOriginales];
+        comunaFiltrada = 'all';
         actualizarKPIs();
         actualizarGraficos();
         actualizarTabla();
@@ -544,6 +757,12 @@
           document.getElementById('filterFuente').value = 'all';
           filtrarDatos();
         });
+
+        try {
+          fetch(SHAPEFILE_URL)
+            .then(resp => resp.ok ? resp.arrayBuffer() : null)
+            .then(buffer => { if (buffer) cargarShapefile(buffer); });
+        } catch (e) { console.warn('No se pudo cargar shapefile automático'); }
       }
 
       async function autoCargarDesdeGoogleSheets() {
@@ -573,7 +792,10 @@
         }
       });
 
-      autoCargarDesdeGoogleSheets();
+      (async function init() {
+        await cargarEquivalencias();
+        await autoCargarDesdeGoogleSheets();
+      })();
     })();
   </script>
 </body>
